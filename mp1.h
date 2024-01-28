@@ -20,14 +20,14 @@
 #define RTC_SYNC _IOR('p', 0x16, unsigned long) 
 
 struct mp1_blink_struct {
-	unsigned short location;
-	char on_char; 
-	char off_char;
-	unsigned short on_length;
-	unsigned short off_length;
-	unsigned short countdown;
-	unsigned short status;
-	struct mp1_blink_struct* next;
+	unsigned short location;		// linear offset on text-mode buffer
+	char on_char; 					// char to put during "on" period
+	char off_char;					// char to put during "off" period
+	unsigned short on_length;		// length of on period in number of RTC interupts
+	unsigned short off_length;		// length of off period
+	unsigned short countdown;		// number of RTC interupts left in period
+	unsigned short status;			// status word (on=1/off=0)
+	struct mp1_blink_struct* next;	// pointer to next item in linked list
 } __attribute((packed)); 
 
 #endif
