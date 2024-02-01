@@ -11,7 +11,6 @@
         COUNTDOWN  = 8
         STATUS     = 10
         NEXT       = 12
-
         STRUCT_SIZE = 16
 
 # Pointer to head of list (initialized to NULL)
@@ -145,5 +144,24 @@ ERROR: # eax = -1
         ret
 
 jumptable:
-        .long mp1_ioctl_add, mp1_ioctl_remove, mp1_ioctl_find, mp1_ioctl_sync
-.end
+        .long mp1_ioctl_add, mp1_ioctl_remove, mp1_ioctl_find,# copy struct
+# if eax != 0, return -1
+# if arg (location) not in bounds, return -1
+# add struct values
+
+        ret
+
+mp1_ioctl_remove:
+        ret
+
+mp1_ioctl_find:
+        ret
+
+mp1_ioctl_sync:
+        ret
+
+ERROR: # eax = -1
+        ret
+
+jumptable:
+        .long mp1_ioctl_add, mp1_ioctl_remove, mp1_ioctl:q
