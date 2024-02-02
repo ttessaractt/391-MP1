@@ -27,6 +27,8 @@ mp1_list_head:
 .global mp1_rtc_tasklet
 .global mp1_ioctl
 .global mp1_poke
+.global mp1_ioctl_add
+.global mp1_copy_from_user
 
 # void mp1_poke(void);
 #
@@ -103,34 +105,27 @@ ON: # if status == 1
 mp1_ioctl:      # dispacher function
 #  uses cmd to determine which of the 4 functions to jump to
 # int mp1_ioctl (unsigned long arg, unsigned long cmd)
-pushl %ebp              # save old base ptr
-movl %esp, %ebp         # set stack frame, ebp = esp
 
-# protect callee saved regs here (do all)
-pushl %esi
 /*
-| %esi          %ebp -4|
-| %ebp          %ebp +-0|
 --------------------------
-| return address %ebp+4 | <- ESP (at start)
-| arg            %ebp+8  |
-| command number %ebp+12 |
-| old stack      %ebp+16 |
+| return address %esp | <- ESP (at start)
+| arg            %esp+4  |
+| command number %esp+8 |
+| old stack      %esp+12 |
 */
 # move cmd from stack to register
-movl 12(%esp), %esi      # move cmd from stack to esi
+movl 8(%esp), %eax      # move cmd from stack to esi
 # compare to check if <0 or >3
-cmpl $3, %esi           # if esi > 3
-jg ERROR              # if esi > 3 jump to default (unsigned)
-cmpl $0, %esi           # if esi < 0
-jl ERROR              # if esi < 0 jump to default (unsigned)
+cmpl $3, %eax           # if esi > 3
+ja ERROR              # if esi > 3 jump to default (unsigned)
+cmpl $0, %eax           # if esi < 0
+jb ERROR              # if esi < 0 jump to default (unsigned)
 # jmp *jumptable(,%esi,4) # jumps to core functions based on esi (cmd)
 # set esp to jumptable *jumptable(,%esi,4)
         # jump table
-        # arg will be first on stack it is ready to use by core functions
-movl %esi, %eax        
-popl %esi       # restore stack
-popl %ebp       # restore stack
+        # arg will be first on stack it is ready to use by core functions   
+# popl %esi       # restore stack
+# popl %ebp       # restore stack
 jmp *jumptable(,%eax,4)
 ret     # pop top of stack off (core function) and jump
 
@@ -164,14 +159,13 @@ must prevent memory leaks, free all malloc'd memory
 # push ____ push first parameter last
 # call myFunc
 # add $12, %esp (12 = 4*# of parameters)
-pushl %ebp              # save old base ptr
-movl %esp, %ebp         # set stack frame, ebp = esp
+# pushl %ebp              # save old base ptr
+# movl %esp, %ebp         # set stack frame, ebp = esp
 
 # protect callee saved regs here (do all)
 # pushl %esi
 /*
-| 16
-| ebp                    |
+
 -------------------------- caller
 | return address %ebp+4  |
 | arg            %ebp+8  |
@@ -183,12 +177,17 @@ movl %esp, %ebp         # set stack frame, ebp = esp
 # copy: unsigned long mp1_copy_from_user (void *to, const void *from, unsigned long n)
 # save shit ?
 
+# if arg is 0, error
+leal 4(%esp), %edx
+cmpl $0, (%edx)
+je ERROR
+
 pushl $16        # push size to stack
 call mp1_malloc # call malloc, void ptr for memory allocated stored in %eax
 popl %ecx
-popl %ecx
 # popl %ecx
-cmpl $0, %eax
+# popl %ecx
+cmpl $0, %eax         # check if eax is NULL, (eax needs to be dereferenced for cmp to work, in ()'s )
 je ERROR
 # cmpl $0, %eax   # compare for checking if mp1_malloc returns NULL (0 in x86)
 # je ERROR        # if ptr is NULL, error
@@ -199,31 +198,87 @@ je ERROR
 # save %eax ?
 
 # copy struct
-movl 8(%ebp), %ecx        # pop arg off stack
+# movl 8(%ebp), %ecx        # pop arg off stack
 # movl %eax, %ebx
-pushl %eax       # push *to, space allocated in malloc
-pushl %ecx       # push *from, arg
+# pushl %eax       # push *to, space allocated in malloc
+# pushl 4(%esp)       # push *from, arg
+# pushl $16       # push n (size to copy)
+movl %eax, %ebx         # save eax (*to) in ebx
 pushl $16       # push n (size to copy)
+pushl %eax       # push *to, space allocated in malloc
+pushl 12(%esp)       # push *from, arg
 call mp1_copy_from_user # copy struct to memory allocated
 popl %ecx
 popl %ecx
 popl %ecx
-cmpl $0, %eax   # compare for checking if ebx != 0
-je ERROR_FREE   # if ebx == 0, error + free memory
-leal -12(%ebp), %esp   # clean up stack, remove inputs to mp1_copy_from_user
-
+cmpl $0, %eax   # compare for checking if eax != 0, check if all memory was able to be copied
+jne ERROR_FREE   # if ebx == 0, error + free memory
+# leal -12(%ebp), %esp   # clean up stack, remove inputs to mp1_copy_from_user
 # if arg (location)(from stack) not in bounds, return -1 + free memory
-cmpl $1999, %ecx        # check if location is < 80*25-1
-# ja ERROR_FREE           # if arg > 80*25-1, error + free memory
-cmpl $0, %ecx           # check if location is > 0
-# jb ERROR_FREE           # if arg < 0, error + free memory
+cmpl $1999, %edx        # check if location is < 80*25-1
+ja ERROR_FREE           # if arg > 80*25-1, error + free memory
+cmpl $0, %edx           # check if location is > 0
+jb ERROR_FREE           # if arg < 0, error + free memory
 
 # add struct values
-push %ebx
+# push %ebx
 
-movl %ecx, %eax         # location = arg (assuming arg is top of stack)
-movl %ebx, 8(%eax)
-movl 4(%ecx), %ebx   # countdown = on length
+/*
+        LOCATION   = 0    
+        ON_CHAR    = 2
+        OFF_CHAR   = 3
+        ON_LENGTH  = 4
+        OFF_LENGTH = 6
+        COUNTDOWN  = 8
+        STATUS     = 10
+        NEXT       = 12
+
+new countdown = old on length
+new status = 1
+new next = old mp1_list_head
+new mp1_list_head = location
+
+%eax = ptr to new that changes
+%ebx = ptr to new (location)
+%ecx = 
+%edx = ptr to from
+*/
+
+pushl %ecx
+pushl %eax
+# edx is ptr to from, ebx it ptr to to, ecx is intermediate, eax is ptr to to that changes
+# movl %edx, %ebx         # copy location = arg (assuming arg is top of stack)
+leal 2(%edx), %ecx      # store addr of on_char to be copied
+leal 2(%ebx), %eax      # store addr of on_char to copy to
+movl (%ecx), %eax   # eax = addr(on_char) = M[ecx], copy on_char
+
+leal 3(%edx), %ecx      
+leal 3(%ebx), %eax      
+movl (%ecx), %eax
+leal 4(%edx), %ecx      
+leal 4(%ebx), %eax      
+movl (%ecx), %eax
+leal 6(%edx), %ecx      
+leal 6(%ebx), %eax      
+movl (%ecx), %eax
+
+leal 4(%edx), %ecx      
+leal 8(%ebx), %eax      
+movl (%ecx), %eax
+    
+leal 10(%ebx), %eax      
+movl $1, %eax
+
+    
+leal 12(%ebx), %eax      
+movl mp1_list_head, %eax
+movl %ebx, mp1_list_head
+
+popl %eax
+popl %ecx
+/*
+movl 8(%ebx), %ebx      # move on lenth to ebx
+movl 4(%ecx), %ebx      # countdown = on length
 movl %ebx, 2(%eax)
 movl 2(%ecx), %ebx        # on char = arg (on char)
 movl %ebx, 3(%eax)
@@ -236,15 +291,16 @@ movl $1, 10(%eax)       # status = 1
 movl %ebx, 12(%eax)
 movl mp1_list_head, %ebx     # next = prev mp_list_head
 movl %eax, mp1_list_head  # make struct head of list
-
-popl %ebx
+*/
+# popl %ebx
 # call mp1_poke
 # to use mp1_poke make call with :
 # %eax offset from the start of video memory
 # %cl ASCII code of character to write
 
+movl %ebx, %eax
 pushl %edx               # mp1_poke clobbers edx so save
-movb 2(%ecx), %cl       # %cl = on char
+movb 2(%ebx), %cl       # %cl = on char
 call mp1_poke           # call mp1_poke  
 popl %edx                # return edx
 
@@ -283,10 +339,10 @@ mp1_ioctl_sync:
 # return 0 on success and -1 on failure (similar error handling to add)
         ret
 
-# error has seg fault
+
 ERROR: # eax = -1
         movl $-1, %eax          # return -1
-        leave
+        # leave
         ret
 
 ERROR_FREE: # error but memory needs to be freed

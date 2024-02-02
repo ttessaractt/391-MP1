@@ -31,9 +31,14 @@ int main(void)
 		return -1;
 	}
 
+	int d; for(d=0; d<80*25; d++){ 
+		*(vmem_base_addr + 2*d) = ' '; 
+		*(vmem_base_addr + 2*d + 1) = 0x07;
+ 	}
+	
 	rtc_fd = open("/dev/rtc", O_RDWR);
 
-	ret_val = ioctl(rtc_fd, RTC_ADD, (unsigned long)0);
+	ret_val = ioctl(rtc_fd, RTC_ADD, (unsigned long)0);		// when arg is 0 this works (i think)
 
 	add_frames(file0, file1, rtc_fd);
 
