@@ -181,6 +181,8 @@ must prevent memory leaks, free all malloc'd memory
 leal 4(%esp), %edx
 cmpl $0, (%edx)
 je ERROR
+# cmpl $1999, %edx        # check if location is < 80*25-1
+# ja ERROR
 
 pushl $16        # push size to stack
 call mp1_malloc # call malloc, void ptr for memory allocated stored in %eax
@@ -212,14 +214,14 @@ popl %ecx
 popl %ecx
 popl %ecx
 cmpl $0, %eax   # compare for checking if eax != 0, check if all memory was able to be copied
-jne ERROR_FREE   # if ebx == 0, error + free memory
+jne ERROR_FREE   # if eax != 0, error + free memory
 # leal -12(%ebp), %esp   # clean up stack, remove inputs to mp1_copy_from_user
 # if arg (location)(from stack) not in bounds, return -1 + free memory
-cmpl $1999, %edx        # check if location is < 80*25-1
+/*cmpl $1999, %edx        # check if location is < 80*25-1
 ja ERROR_FREE           # if arg > 80*25-1, error + free memory
 cmpl $0, %edx           # check if location is > 0
 jb ERROR_FREE           # if arg < 0, error + free memory
-
+*/
 # add struct values
 # push %ebx
 
