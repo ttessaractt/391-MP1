@@ -177,10 +177,6 @@ must prevent memory leaks, free all malloc'd memory
 # copy: unsigned long mp1_copy_from_user (void *to, const void *from, unsigned long n)
 # save shit ?
 
-# if arg is 0, error
-leal 4(%esp), %edx
-cmpl $0, (%edx)
-je ERROR
 # cmpl $1999, %edx        # check if location is < 80*25-1
 # ja ERROR
 
@@ -189,13 +185,19 @@ call mp1_malloc # call malloc, void ptr for memory allocated stored in %eax
 popl %ecx
 # popl %ecx
 # popl %ecx
-cmpl $0, %eax         # check if eax is NULL, (eax needs to be dereferenced for cmp to work, in ()'s )
-je ERROR
+cmpl $0, %eax         # check if eax is NULL, check if pointer (not what it points to) is NULL (aka 0)
+je ERROR                # memory wasnt able to be allocated, error
 # cmpl $0, %eax   # compare for checking if mp1_malloc returns NULL (0 in x86)
 # je ERROR        # if ptr is NULL, error
 # popl %ebx
 # leal -4(%ebp), %esp    # clean up stack, remove 16
 # je ERROR        # if ptr is NULL, error
+
+# if arg is 0, error
+movl 4(%esp), %edx      # get addr of arg (*from) from stack
+cmpl $0, %edx         # check if *from is 0
+je ERROR                # if *from == 0, error
+
 
 # save %eax ?
 
@@ -205,104 +207,62 @@ je ERROR
 # pushl %eax       # push *to, space allocated in malloc
 # pushl 4(%esp)       # push *from, arg
 # pushl $16       # push n (size to copy)
-movl %eax, %ebx         # save eax (*to) in ebx
+movl %eax, %ebx         # save eax (*to) in ebx, ebx = eax = (*to)
 pushl $16       # push n (size to copy)
+pushl 8(%esp)       # push *from, arg
 pushl %eax       # push *to, space allocated in malloc
-pushl 12(%esp)       # push *from, arg
 call mp1_copy_from_user # copy struct to memory allocated
 popl %ecx
 popl %ecx
 popl %ecx
+
 cmpl $0, %eax   # compare for checking if eax != 0, check if all memory was able to be copied
 jne ERROR_FREE   # if eax != 0, error + free memory
-# leal -12(%ebp), %esp   # clean up stack, remove inputs to mp1_copy_from_user
-# if arg (location)(from stack) not in bounds, return -1 + free memory
-/*cmpl $1999, %edx        # check if location is < 80*25-1
-ja ERROR_FREE           # if arg > 80*25-1, error + free memory
-cmpl $0, %edx           # check if location is > 0
-jb ERROR_FREE           # if arg < 0, error + free memory
-*/
-# add struct values
-# push %ebx
 
+movl 4(%esp), %edx
+movw LOCATION(%edx), %ax
+cmpw $1999, %ax        # check if location is < 80*25-1
+jg ERROR_FREE           # if location > 80*25-1, error + free memory
+
+cmpw $0, %ax        # check if location is > 0
+jl ERROR_FREE           # if location < 0, error + free memory
+
+pushl %ecx      # save ecx
 /*
-        LOCATION   = 0    
-        ON_CHAR    = 2
-        OFF_CHAR   = 3
-        ON_LENGTH  = 4
-        OFF_LENGTH = 6
-        COUNTDOWN  = 8
-        STATUS     = 10
-        NEXT       = 12
-
-new countdown = old on length
-new status = 1
-new next = old mp1_list_head
-new mp1_list_head = location
-
-%eax = ptr to new that changes
-%ebx = ptr to new (location)
-%ecx = 
-%edx = ptr to from
+copy struct
+%ebx = ptr to new struct
+%ecx = temp varible
+%edx = ptr to old struct
 */
+movw %ax, LOCATION(%ebx)        # copy LOCATION to new struct  
 
-pushl %ecx
-pushl %eax
-# edx is ptr to from, ebx it ptr to to, ecx is intermediate, eax is ptr to to that changes
-# movl %edx, %ebx         # copy location = arg (assuming arg is top of stack)
-leal 2(%edx), %ecx      # store addr of on_char to be copied
-leal 2(%ebx), %eax      # store addr of on_char to copy to
-movl (%ecx), %eax   # eax = addr(on_char) = M[ecx], copy on_char
+movb ON_CHAR(%edx), %cl         # get ON_CHAR from old struct
+movb %cl, ON_CHAR(%ebx)         # copy ON_CHAR to new struct
 
-leal 3(%edx), %ecx      
-leal 3(%ebx), %eax      
-movl (%ecx), %eax
-leal 4(%edx), %ecx      
-leal 4(%ebx), %eax      
-movl (%ecx), %eax
-leal 6(%edx), %ecx      
-leal 6(%ebx), %eax      
-movl (%ecx), %eax
+movb OFF_CHAR(%edx), %cl        # get OFF_CHAR from old struct
+movb %cl, OFF_CHAR(%ebx)        # copy OFF_CHAR to new struct
 
-leal 4(%edx), %ecx      
-leal 8(%ebx), %eax      
-movl (%ecx), %eax
-    
-leal 10(%ebx), %eax      
-movl $1, %eax
+movw ON_LENGTH(%edx), %cx        # get ON_LENGTH from old struct
+movw %cx, ON_LENGTH(%ebx)        # copy ON_LENGTH to new struct
 
-    
-leal 12(%ebx), %eax      
-movl mp1_list_head, %eax
-movl %ebx, mp1_list_head
+movw OFF_LENGTH(%edx), %cx      # get OFF_LENGTH from old struct
+movw %cx, OFF_LENGTH(%ebx)      # copy OFF_LENGTH to new struct
 
-popl %eax
+movw ON_LENGTH(%edx), %cx       # get ON_LENGTH from old struct
+movw %cx, COUNTDOWN(%ebx)       # copy COUNTDOWN to new struct
+   
+movw $1, STATUS(%ebx)           # set STATUS in new struct to 1
+
+movl NEXT(%ebx), %ecx           # store new struct NEXT in %ecx
+movl mp1_list_head, %ecx        # set NEXT to the old  mp1_list_head
+movl %ebx, mp1_list_head        # set new mp1_list_head
+
 popl %ecx
-/*
-movl 8(%ebx), %ebx      # move on lenth to ebx
-movl 4(%ecx), %ebx      # countdown = on length
-movl %ebx, 2(%eax)
-movl 2(%ecx), %ebx        # on char = arg (on char)
-movl %ebx, 3(%eax)
-movl 3(%ecx), %ebx        # off char = arg(off char)
-movl %ebx, 4(%eax)
-movl 4(%ecx), %ebx        # on length = arg(on length)
-movl %ebx, 6(%eax)
-movl 6(%ecx), %ebx        # off length = arg (off length)
-movl $1, 10(%eax)       # status = 1
-movl %ebx, 12(%eax)
-movl mp1_list_head, %ebx     # next = prev mp_list_head
-movl %eax, mp1_list_head  # make struct head of list
-*/
-# popl %ebx
-# call mp1_poke
-# to use mp1_poke make call with :
-# %eax offset from the start of video memory
-# %cl ASCII code of character to write
 
-movl %ebx, %eax
 pushl %edx               # mp1_poke clobbers edx so save
-movb 2(%ebx), %cl       # %cl = on char
+
+movb ON_CHAR(%ebx), %cl       # %cl = on char
+# %ax is already location
 call mp1_poke           # call mp1_poke  
 popl %edx                # return edx
 
@@ -348,9 +308,9 @@ ERROR: # eax = -1
         ret
 
 ERROR_FREE: # error but memory needs to be freed
-        pushl %eax       # push addr to free
+        pushl %ebx       # push addr to free
         call mp1_free   # free memory
-        popl %eax        # remove from stack
+        popl %ebx        # remove from stack
         movl $-1, %eax  # return -1
         ret
 
