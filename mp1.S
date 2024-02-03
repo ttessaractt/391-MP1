@@ -59,49 +59,68 @@ mp1_rtc_tasklet:
 # go to next struct in linked list
 
 # return 0 once it is done
-        # movl mp1_list_head, %esi        # move head of list to esi
-        # call T_LOOP                     # call loop that cycles through linked list
-        # movl $0, %eax                   # return 0
-        ret
-/*
-T_LOOP: # loop for tasklet
-        decl 8(%esi)            # decrement countdown
-        cmpl $0, 8(%esi)        # compare countdown to 0
-        je ZERO                 # if countdown is 0, jump
-        movl 12(%esi), %esi     # go to next struct
-        cmpl $0, %esi           # check if entire list has been done
-        jne T_LOOP              # if there is still more list, continue loop
+        pushl %eax
+        pushl %ebx
+        pushl %ecx
+        pushl %edx
+        movl mp1_list_head, %edx        # move head of list to esi
+        cmpl $0, %edx
+        je LIST_DONE
+        call T_LOOP                     # call loop that cycles through linked list
+        popl %edx
+        popl %ecx
+        popl %ebx
+        popl %eax
         ret
 
+T_LOOP: # loop for tasklet
+        cmpl $0, %edx                   # check if ptr to struct is NULL
+        je LIST_DONE
+
+        cmpw $0, COUNTDOWN(%edx)        # compare countdown to 0
+        je ZERO                         # if countdown is 0, jump
+        decw COUNTDOWN(%edx)            # decrement countdown
+        cmpw $0, COUNTDOWN(%edx)        # compare countdown to 0
+        je ZERO                         # if countdown is 0, jump
+        movl NEXT(%edx), %edx           # go to next struct in list
+        jne T_LOOP                      # if there is still more list, continue loop
+
 ZERO: # if countdown is 0
-        cmpl $0, 10(%esi)       # compare status to 0
+        cmpw $0, STATUS(%edx)       # compare status to 0
         je OFF                  # if status is 0
         jne ON                  # if status is 1
 OFF: # is status == 0
-        push %ebx
-        movl 8(%esi), %ebx      # set ebx to countdown
-        movb 2(%esi), %cl       # set cl to on_char
-        movl (%esi), %eax       # move location (?) to eax
+        movb ON_CHAR(%edx), %cl       # set cl to ON_CHAR
+        movw LOCATION(%edx), %ax       # move LOCATION to eax
+        imulw $2, %ax, %ax              # location *2
+        pushl %edx
         call mp1_poke           # change character
-        movl $1, 10(%esi)       # set status to 1
-        movl 4(%esi), %ebx   # set countdown to on_length
-        movl 12(%esi), %esi     # go to next struct
-        cmpl $0, %esi           # check if entire list has been done
-        pop %ebx
-        jne T_LOOP              # if there is still more list, continue loop
+        popl %edx
+        movw $1, STATUS(%edx)       # set STATUS to 1
+        movw ON_LENGTH(%edx), %bx       # store ON_LENGTH in bx
+        movw %bx, COUNTDOWN(%edx)      # set COUNTDOWN to ON_LENGTH
+        movl NEXT(%edx), %edx     # go to NEXT struct in list
+        jmp T_LOOP              # if there is still more list, continue loop
+
 ON: # if status == 1
-        push %ebx
-        movl 8(%esi), %ebx      # set ebx to countdown
-        movb 3(%esi), %cl       # set cl to off_char
-        movl (%esi), %eax       # move location (?) to eax
+        movb OFF_CHAR(%edx), %cl       # set cl to OFF_CHAR
+        movw LOCATION(%edx), %ax       # move LOCATION  to eax
+        imulw $2, %ax, %ax              # location *2
+        pushl %edx
         call mp1_poke           # change character
-        movl $0, 10(%esi)       # set status to 0
-        movl 6(%esi), %ebx   # set countdown to off_length
-        movl 12(%esi), %esi     # go to next struct
-        cmpl $0, %esi           # check if entire list has been done
-        pop %ebx
-        jne T_LOOP              # if there is still more list, continue loop
-*/
+        popl %edx
+        movw $0, STATUS(%edx)       # set STATUS to 0
+        movw OFF_LENGTH(%edx), %bx       # store OFF_LENGTH in bx
+        movw %bx, COUNTDOWN(%edx)      # set COUNTDOWN to OFF_LENGTH
+        movl NEXT(%edx), %edx     # go to NEXT struct in list
+        jmp T_LOOP              # if there is still more list, continue loop
+
+LIST_DONE:
+        # popl %eax       # remove return addr
+        movl $0, %eax
+        
+        ret
+
 mp1_ioctl:      # dispacher function
 #  uses cmd to determine which of the 4 functions to jump to
 # int mp1_ioctl (unsigned long arg, unsigned long cmd)
@@ -137,7 +156,6 @@ ret     # pop top of stack off (core function) and jump
 mp1_ioctl_add: # add a mp1_blink_struct to the head of the linked list
 # int mp1_ioctl_add(unsigned long arg)
 # arg is a (user level) ptr to a mp1_blink_struct struct
-
 # dynamically allocate memory using mp1_malloc to store copy of structure
 # use mp1_copy_from_user to copy entire struct
 # countdown = on_length
@@ -145,73 +163,32 @@ mp1_ioctl_add: # add a mp1_blink_struct to the head of the linked list
 # fill out all struct parts (including next)
 # insert struct at head of linked list using mp1_list_head ptr
 # call mp1_poke (with correct parameters
-
 /*
-should return 0 if works
-should return -1 if
-        - memory allocation error (mp1_malloc returns NULL)
-        - if mp1_copy_from_user returns anything other than 0
-        - if location not in valid range (0 to 80*25-1)
-must prevent memory leaks, free all malloc'd memory
-*/
-# push ____ push last parameter first
-# push ____ push 2nd parameter
-# push ____ push first parameter last
-# call myFunc
-# add $12, %esp (12 = 4*# of parameters)
-# pushl %ebp              # save old base ptr
-# movl %esp, %ebp         # set stack frame, ebp = esp
-
-# protect callee saved regs here (do all)
-# pushl %esi
-/*
-
 -------------------------- caller
 | return address %ebp+4  |
 | arg            %ebp+8  |
 | command number %ebp+12 |
 | old stack      %ebp+16 | <- old EBP
 */
-# push caller preserved
-# malloc: void* mp1_malloc(unsigned long size), size = 16 (?)
-# copy: unsigned long mp1_copy_from_user (void *to, const void *from, unsigned long n)
-# save shit ?
-
-# cmpl $1999, %edx        # check if location is < 80*25-1
-# ja ERROR
-
+# allocate memory
 pushl $16        # push size to stack
 call mp1_malloc # call malloc, void ptr for memory allocated stored in %eax
 popl %ecx
-# popl %ecx
-# popl %ecx
 cmpl $0, %eax         # check if eax is NULL, check if pointer (not what it points to) is NULL (aka 0)
 je ERROR                # memory wasnt able to be allocated, error
-# cmpl $0, %eax   # compare for checking if mp1_malloc returns NULL (0 in x86)
-# je ERROR        # if ptr is NULL, error
-# popl %ebx
-# leal -4(%ebp), %esp    # clean up stack, remove 16
-# je ERROR        # if ptr is NULL, error
 
 # if arg is 0, error
 movl 4(%esp), %edx      # get addr of arg (*from) from stack
 cmpl $0, %edx         # check if *from is 0
 je ERROR                # if *from == 0, error
 
-
-# save %eax ?
-
 # copy struct
-# movl 8(%ebp), %ecx        # pop arg off stack
-# movl %eax, %ebx
-# pushl %eax       # push *to, space allocated in malloc
-# pushl 4(%esp)       # push *from, arg
-# pushl $16       # push n (size to copy)
+
 movl %eax, %ebx         # save eax (*to) in ebx, ebx = eax = (*to)
 pushl $16       # push n (size to copy)
 pushl 8(%esp)       # push *from, arg
 pushl %eax       # push *to, space allocated in malloc
-call mp1_copy_from_user # copy struct to memory allocated
+call mp1_copy_from_user # copy struct from arg to memory allocated
 popl %ecx
 popl %ecx
 popl %ecx
@@ -253,16 +230,17 @@ movw %cx, COUNTDOWN(%ebx)       # copy COUNTDOWN to new struct
    
 movw $1, STATUS(%ebx)           # set STATUS in new struct to 1
 
-movl NEXT(%ebx), %ecx           # store new struct NEXT in %ecx
 movl mp1_list_head, %ecx        # set NEXT to the old  mp1_list_head
+movl %ecx, NEXT(%ebx)
 movl %ebx, mp1_list_head        # set new mp1_list_head
 
 popl %ecx
 
+# call mp1_poke
 pushl %edx               # mp1_poke clobbers edx so save
 
 movb ON_CHAR(%ebx), %cl       # %cl = on char
-imulw $2, %ax, %ax
+imulw $2, %ax, %ax              # location *2
 
 call mp1_poke           # call mp1_poke  
 popl %edx                # return edx
