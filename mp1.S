@@ -262,7 +262,8 @@ popl %ecx
 pushl %edx               # mp1_poke clobbers edx so save
 
 movb ON_CHAR(%ebx), %cl       # %cl = on char
-# %ax is already location
+imulw $2, %ax, %ax
+
 call mp1_poke           # call mp1_poke  
 popl %edx                # return edx
 
