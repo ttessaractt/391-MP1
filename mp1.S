@@ -307,7 +307,7 @@ mp1_ioctl_find:
 # use mp1_copy_to_user to copy entire struct to the ptr at the beginning of the function
 # if error (similar error handling to add) return -1, else return 0
 
-/*
+
 
 
 pushl %ebp              # save old base ptr
@@ -365,7 +365,7 @@ jne ERROR   # if eax != 0, error + free memory
         popl %ebx
         popl %eax
         popl %ebp
-        leave*/
+        leave
         ret
 
 GET_LOCATION: # helper function to get location from struct in user space
@@ -439,7 +439,7 @@ mp1_ioctl_sync:
 
 # location 1 = %cx
 # location 2 = %bx
-/*
+
 pushl %ebp              # save old base ptr
 movl %esp, %ebp         # set stack frame, ebp = esp
 pushl %eax
@@ -501,7 +501,7 @@ jne SYNC_STATUS_ON                  # if status is 1
         popl %ecx
         popl %ebx
         popl %eax
-        popl %ebp*/
+        # popl %ebp
         ret
 
 
