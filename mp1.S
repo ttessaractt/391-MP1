@@ -59,80 +59,76 @@ mp1_rtc_tasklet:
 # go to next struct in linked list
 
 # return 0 once it is done
-        pushl %eax
+        pushl %ebp              # save old base ptr
+        movl %esp, %ebp         # set stack frame, ebp = esp
+        
         pushl %ebx
-        pushl %ecx
-        pushl %edx
         pushl %esi
         pushl %edi
         xor %eax, %eax
         xor %ebx, %ebx
         xor %ecx, %ecx
         xor %edx, %edx
-        movl mp1_list_head, %edx        # move head of list to esi
-        cmpl $0, %edx
+        movl mp1_list_head, %ebx        # move head of list to esi
+        cmpl $0, %ebx
         je TASKLET_LIST_DONE
-        call TASKLET_LOOP                     # call loop that cycles through linked list
-        popl %edi
-        popl %esi
-        popl %edx
-        popl %ecx
-        popl %ebx
-        popl %eax
-        leave
-        ret
+        jmp TASKLET_LOOP                     # call loop that cycles through linked list
+        # popl %edi
+        # popl %esi
+        # popl %ebx
+        # leave
+        # ret
 
 TASKLET_LOOP: # loop for tasklet
-        cmpl $0, %edx                   # check if ptr to struct is NULL
+        cmpw $0, %bx                   # check if ptr to struct is NULL
         je TASKLET_LIST_DONE
 
-        cmpw $0, COUNTDOWN(%edx)        # compare countdown to 0
+        cmpw $0, COUNTDOWN(%ebx)        # compare countdown to 0
         je TASKLET_COUNTDOWN_ZERO                         # if countdown is 0, jump
-        decw COUNTDOWN(%edx)            # decrement countdown
-        cmpw $0, COUNTDOWN(%edx)        # compare countdown to 0
+        jl ERROR
+        decw COUNTDOWN(%ebx)            # decrement countdown
+
+        cmpw $0, COUNTDOWN(%ebx)        # compare countdown to 0
         je TASKLET_COUNTDOWN_ZERO                         # if countdown is 0, jump
-        movl NEXT(%edx), %edx           # go to next struct in list
+
+        movl NEXT(%ebx), %ebx           # go to next struct in list
         jne TASKLET_LOOP                      # if there is still more list, continue loop
 
 TASKLET_COUNTDOWN_ZERO: # if countdown is 0
-        cmpw $0, STATUS(%edx)       # compare status to 0
+        cmpw $0, STATUS(%ebx)       # compare status to 0
         je TASKLET_STATUS_OFF                  # if status is 0
         jne TASKLET_STATUS_ON                  # if status is 1
 
 TASKLET_STATUS_OFF: # is status == 0
-        movb ON_CHAR(%edx), %cl       # set cl to ON_CHAR
-        movw LOCATION(%edx), %ax       # move LOCATION to eax
+        movb ON_CHAR(%ebx), %cl       # set cl to ON_CHAR
+        movw LOCATION(%ebx), %ax       # move LOCATION to eax
         imulw $2, %ax, %ax              # location *2
         pushl %edx
         call mp1_poke           # change character
         popl %edx
-        movw $1, STATUS(%edx)       # set STATUS to 1
-        movw ON_LENGTH(%edx), %bx       # store ON_LENGTH in bx
-        movw %bx, COUNTDOWN(%edx)      # set COUNTDOWN to ON_LENGTH
-        movl NEXT(%edx), %edx     # go to NEXT struct in list
+        movw $1, STATUS(%ebx)       # set STATUS to 1
+        movl ON_LENGTH(%ebx), %esi       # store ON_LENGTH in bx
+        movl %esi, COUNTDOWN(%ebx)      # set COUNTDOWN to ON_LENGTH
+        movl NEXT(%ebx), %ebx     # go to NEXT struct in list
         jmp TASKLET_LOOP              # if there is still more list, continue loop
 
 TASKLET_STATUS_ON: # if status == 1
-        movb OFF_CHAR(%edx), %cl       # set cl to OFF_CHAR
-        movw LOCATION(%edx), %ax       # move LOCATION  to eax
+        movb OFF_CHAR(%ebx), %cl       # set cl to OFF_CHAR
+        movw LOCATION(%ebx), %ax       # move LOCATION  to eax
         imulw $2, %ax, %ax              # location *2
         pushl %edx
         call mp1_poke           # change character
         popl %edx
-        movw $0, STATUS(%edx)       # set STATUS to 0
-        movw OFF_LENGTH(%edx), %bx       # store OFF_LENGTH in bx
-        movw %bx, COUNTDOWN(%edx)      # set COUNTDOWN to OFF_LENGTH
-        movl NEXT(%edx), %edx     # go to NEXT struct in list
+        movw $0, STATUS(%ebx)       # set STATUS to 0
+        movl OFF_LENGTH(%ebx), %esi       # store OFF_LENGTH in bx
+        movl %esi, COUNTDOWN(%ebx)      # set COUNTDOWN to OFF_LENGTH
+        movl NEXT(%ebx), %ebx     # go to NEXT struct in list
         jmp TASKLET_LOOP              # if there is still more list, continue loop
 
 TASKLET_LIST_DONE:
-        # popl %eax       # remove return addr
         popl %edi
         popl %esi
-        popl %edx
-        popl %ecx
         popl %ebx
-        popl %eax
         leave
         ret
 
@@ -193,10 +189,7 @@ mp1_ioctl_add: # add a mp1_blink_struct to the head of the linked list
 pushl %ebp              # save old base ptr
 movl %esp, %ebp         # set stack frame, ebp = esp
 
-pushl %eax
 pushl %ebx
-pushl %ecx
-pushl %edx
 pushl %esi
 pushl %edi
 
@@ -290,10 +283,7 @@ popl %edx                # return edx
 
         popl %edi
         popl %esi
-        popl %edx
-        popl %ecx
         popl %ebx
-        popl %eax
         # popl %ebp
         movl $0, %eax           # function successful, return 0
         leave
@@ -308,10 +298,7 @@ mp1_ioctl_remove:
 # remove element from list before freeing
 pushl %ebp              # save old base ptr
 movl %esp, %ebp         # set stack frame, ebp = esp
-pushl %eax
 pushl %ebx
-pushl %ecx
-pushl %edx
 pushl %esi
 pushl %edi
 xor %eax, %eax
@@ -319,60 +306,56 @@ xor %ebx, %ebx
 xor %ecx, %ecx
 xor %edx, %edx
 
-movw 4(%ebp), %ax       # get location from stack
+movw 4(%ebp), %bx       # get location from stack
 # validate location
-cmpw $1999, %ax        # check if location is < 80*25-1
+cmpw $1999, %bx        # check if location is < 80*25-1
 jg ERROR           # if location > 80*25-1, error + free memory
-cmpw $0, %ax        # check if location is > 0
+cmpw $0, %bx        # check if location is > 0
 jl ERROR           # if location < 0, error + free memory
 
 # search linked list
-pushl %eax              # push location to stack for search
+pushl %ebx              # push location to stack for search
 call LL_SEARCH          # call linked list search
-popl %ecx               # pop location off stack
+popl %edi               # pop location off stack
 
+movl %ecx, %esi         # move node before to esi
+movl %edx, %edi              # move node to be removed to edi
 # check if location was found
-cmpl $-1, %eax  # check if location was not found
+cmpl $-1, %edi  # check if location was not found
 je ERROR        # location not found, error
 # movl %eax, %ecx # move addr of struct to ecx
 
 # remove from list
-cmpl mp1_list_head, %eax        # check if node found is head of list
+cmpl mp1_list_head, %edi        # check if node found is head of list
 je REMOVE_HEAD                  # if it is head jump to that removal
 
-movl NEXT(%eax), %ecx           # get next ptr from node to be removed
-movl NEXT(%ebx), %ecx           # connect the nodes without node to be removed 
+movl NEXT(%edi), %ebx           # get next ptr from node to be removed
+movl %ebx, NEXT(%esi)           # connect the nodes without node to be removed 
 
 # free memory
-pushl %eax
+pushl %edi
 call mp1_free
-popl %eax
+popl %edi
 
 # clean up      
         popl %edi
         popl %esi
-        popl %edx
-        popl %ecx
         popl %ebx
-        popl %eax
         movl $0, %eax   # return 0
         leave
         ret
 
 REMOVE_HEAD: # helper to remove node from linked list if it is the head
-movl NEXT(%eax), %ecx
-movl %ecx, mp1_list_head          # set new heas ptr
+movl NEXT(%edi), %ebx
+movl %ebx, mp1_list_head          # set new heas ptr
 
-pushl %eax
+pushl %edi
 call mp1_free                     # free memory
-popl %eax
+popl %edi
 # clean up
         popl %edi
         popl %esi
-        popl %edx
-        popl %ecx
         popl %ebx
-        popl %eax
         movl $0, %eax   # return 0
         leave
         ret
@@ -391,10 +374,7 @@ mp1_ioctl_find:
 
 pushl %ebp              # save old base ptr
 movl %esp, %ebp         # set stack frame, ebp = esp
-pushl %eax
 pushl %ebx
-pushl %ecx
-pushl %edx
 pushl %esi
 pushl %edi
 xor %eax, %eax
@@ -403,39 +383,40 @@ xor %ecx, %ecx
 xor %edx, %edx
 
 # validate ptr points to actual struct
-movl 4(%ebp), %edx      # get addr of arg (*from) from stack
-cmpl $0, %edx         # check if *from is 0
+movl 8(%ebp), %esi      # get addr of arg (*from) from stack
+cmpl $0, %esi         # check if *from is 0
 je ERROR                # if *from == 0, error
 
 # get location
-pushl %edx      # push addr of struct to stack
-call GET_LOCATION       # get location (stored in eax)
-popl %edx       # take addr off stack
+movw LOCATION(%esi), %bx
+# pushl %edx      # push addr of struct to stack
+# call GET_LOCATION       # get location (stored in eax)
+# popl %edx       # take addr off stack
 
 # error check location
-cmpw $1999, %ax        # check if location is < 80*25-1
+cmpw $1999, %bx        # check if location is < 80*25-1
 jg ERROR           # if location > 80*25-1, error + free memory
-cmpw $0, %ax        # check if location is > 0
+cmpw $0, %bx        # check if location is > 0
 jl ERROR           # if location < 0, error + free memory
 
 # search linked list
-pushl %eax              # push location to stack for search
+pushl %ebx              # push location to stack for search
 call LL_SEARCH          # call linked list search
-popl %ecx               # pop location off stack
+popl %edi               # pop location off stack
 
 # check if location was found
-cmpl $-1, %eax  # check if location was not found
+cmpl $-1, %edx  # check if location was not found
 je ERROR        # location not found, error
-movl %eax, %ebx # move addr of struct to ebx
+movl %edx, %edi # move addr of struct to ebx
 
 # copy to user
 pushl $16       # push n (size to copy)
-pushl %eax       # push *from, addr of struct with matching location
-pushl %edx       # push *to, addr that was passed in
+pushl %ebx       # push *from, addr of struct with matching location
+pushl %edi       # push *to, addr that was passed in
 call mp1_copy_to_user
-popl %ecx
-popl %ecx
-popl %ecx
+popl %esi
+popl %esi
+popl %esi
 
 cmpl $0, %eax   # compare for checking if eax != 0, check if all memory was able to be copied
 jne ERROR   # if eax != 0, error + free memory
@@ -443,11 +424,9 @@ jne ERROR   # if eax != 0, error + free memory
 # clean up
         popl %edi
         popl %esi
-        popl %edx
-        popl %ecx
         popl %ebx
-        popl %eax
         # popl %ebp
+        movl $0, %eax
         leave
         ret
 
@@ -469,8 +448,6 @@ pushl %ebp              # save old base ptr
 movl %esp, %ebp         # set stack frame, ebp = esp
 # pushl %eax
 pushl %ebx
-pushl %ecx
-pushl %edx
 pushl %esi
 pushl %edi
 xor %eax, %eax
@@ -479,6 +456,9 @@ xor %ecx, %ecx
 xor %edx, %edx
 
 movl 4(%ebp), %edx      # get addr of struct from stack
+
+cmpl $0, %edx         # check if *from is 0
+je ERROR                # if *from == 0, error
 
 # malloc struct
 pushl $16        # push size to stack
@@ -508,8 +488,6 @@ popl %ebx
 # clean up
         popl %edi
         popl %esi
-        popl %edx
-        popl %ecx
         popl %ebx
         # popl %eax
         # popl %ebp
@@ -526,81 +504,80 @@ mp1_ioctl_sync:
 # call mp1_poke on either on_char or off_char (depending on status) for 2nd location
 # return 0 on success and -1 on failure (similar error handling to add)
 
-# location 1 = %cx
-# location 2 = %bx
-
 pushl %ebp              # save old base ptr
 movl %esp, %ebp         # set stack frame, ebp = esp
-pushl %eax
 pushl %ebx
-pushl %ecx
-pushl %edx
 pushl %esi
 pushl %edi
 xor %eax, %eax
 xor %ebx, %ebx
 xor %ecx, %ecx
 xor %edx, %edx
+
 # get arg
-movl 4(%ebp), %edx      # get arg from stack
+movl 8(%ebp), %esi      # get arg from stack
 # get location 1 & validate
-movl %edx, %ecx         # move 
-shr $16, %ecx           # roate 16 bits to get location 1 from upper 16 bits
-cmpw $1999, %cx        # check if location 1 is < 80*25-1
-jg ERROR           # if location 1 > 80*25-1, error + free memory
-cmpw $0, %cx        # check if location 1 is > 0
-jl ERROR           # if location 1 < 0, error + free memory
+movl %esi, %ebx         # move 
+shr $16, %ebx           # roate 16 bits to get location 1 from upper 16 bits
+cmpw $1999, %bx        # check if location 1 is < 80*25-1
+jg ERROR           # if location 1 > 80*25-1, error
+cmpw $0, %bx        # check if location 1 is > 0
+jl ERROR           # if location 1 < 0, error 
+
+# search for 1st location in linked list
+pushl %ebx              # push location to stack for search
+call LL_SEARCH          # call linked list search
+popl %edi               # pop location off stack
+movl %edx, %edi         # store addr of struct 1 in ebx
+cmpl $-1, %edi
+je ERROR
 
 # get location 2 & validate
-movw %dx, %bx          # get location 2 from lower 16 bits
+movl 8(%ebp), %ebx          # get location 2 from lower 16 bits
+andl $0x0000FFFF, %ebx            # zero out top 16 bits
 cmpw $1999, %bx        # check if location 2 is < 80*25-1
 jg ERROR           # if location 2 > 80*25-1, error + free memory
 cmpw $0, %bx        # check if location 2 is > 0
 jl ERROR          # if location 2 < 0, error + free memory
 
-# search for 1st location in linked list
-pushl %ecx              # push location to stack for search
-call LL_SEARCH          # call linked list search
-popl %edx               # pop location off stack
-movl %eax, %ecx         # store addr of struct 1 in ebx
-
 # search for 2nd location in linked list
+pushl %edi
 pushl %ebx              # push location to stack for search
 call LL_SEARCH          # call linked list search
-popl %edx               # pop location off stack
-movl %eax, %ebx         # store addr of struct 2 in ecx
+popl %esi               # pop location off stack
+popl %edi
+movl %edx, %esi         # store addr of struct 2 in ecx
+cmpl $-1, %esi
+je ERROR
 
 # copy timing info (on_length, off_length, countdown, status) from 1st to 2nd
-movw ON_LENGTH(%ecx), %dx        # get ON_LENGTH from 1 
-movw %dx, ON_LENGTH(%ebx)        # copy ON_LENGTH to 2
+movw ON_LENGTH(%edi), %bx        # get ON_LENGTH from 1 
+movw %bx, ON_LENGTH(%esi)        # copy ON_LENGTH to 2
 
-movw OFF_LENGTH(%ecx), %dx      # get OFF_LENGTH from 1
-movw %dx, OFF_LENGTH(%ebx)      # copy OFF_LENGTH to 2
+movw OFF_LENGTH(%edi), %bx      # get OFF_LENGTH from 1
+movw %bx, OFF_LENGTH(%esi)      # copy OFF_LENGTH to 2
 
-movw COUNTDOWN(%ecx), %dx       # get COUNTDOWN from 1
-movw %dx, COUNTDOWN(%ebx)       # copy COUNTDOWN to 2
+movw COUNTDOWN(%edi), %bx       # get COUNTDOWN from 1
+movw %bx, COUNTDOWN(%esi)       # copy COUNTDOWN to 2
 
-movw STATUS(%ecx), %dx       # get STATUS from 1
-movw %dx, STATUS(%ebx)       # copy STATUS to 2
+movw STATUS(%edi), %bx       # get STATUS from 1
+movw %bx, STATUS(%esi)       # copy STATUS to 2
 
 # call mp1_poke on ON_CHAR or OFF_CHAR depending on STATUS
-cmpw $0, STATUS(%ebx)       # compare status to 0
+cmpw $0, STATUS(%esi)       # compare status to 0
 je SYNC_STATUS_OFF                  # if status is 0
 jne SYNC_STATUS_ON                  # if status is 1
 
         popl %edi
         popl %esi
-        popl %edx
-        popl %ecx
         popl %ebx
-        popl %eax
         # popl %ebp
         ret
 
 
 SYNC_STATUS_ON:         # status is on (=1) for 2nd location in sync
-        movb ON_CHAR(%ebx), %cl       # set cl to ON_CHAR
-        movw LOCATION(%ebx), %ax       # move LOCATION to eax
+        movb ON_CHAR(%esi), %cl       # set cl to ON_CHAR
+        movw LOCATION(%esi), %ax       # move LOCATION to eax
         imulw $2, %ax, %ax              # location *2
         pushl %edx
         call mp1_poke           # change character
@@ -608,17 +585,14 @@ SYNC_STATUS_ON:         # status is on (=1) for 2nd location in sync
 # clean up
         popl %edi
         popl %esi
-        popl %edx
-        popl %ecx
         popl %ebx
-        popl %eax
-        # popl %ebp
+        movl $0, %eax           # return 0 on success
         leave 
         ret
 
 SYNC_STATUS_OFF:        # status is off (=0) for 2nd location in sync
-        movb OFF_CHAR(%ebx), %cl       # set cl to ON_CHAR
-        movw LOCATION(%ebx), %ax       # move LOCATION to eax
+        movb OFF_CHAR(%esi), %cl       # set cl to ON_CHAR
+        movw LOCATION(%esi), %ax       # move LOCATION to eax
         imulw $2, %ax, %ax              # location *2
         pushl %edx
         call mp1_poke           # change character
@@ -626,21 +600,15 @@ SYNC_STATUS_OFF:        # status is off (=0) for 2nd location in sync
 # clean up
         popl %edi
         popl %esi
-        popl %edx
-        popl %ecx
         popl %ebx
-        popl %eax
-        # popl %ebp
+        movl $0, %eax           # return 0 on success
         leave 
         ret
 
 ERROR: # eax = -1
         popl %edi
         popl %esi
-        popl %edx
-        popl %ecx
         popl %ebx
-        popl %eax
         # popl %ebp
         movl $-1, %eax          # return -1
         leave
@@ -653,10 +621,7 @@ ERROR_FREE: # error but memory needs to be freed
 # clean up
         popl %edi
         popl %esi
-        popl %edx
-        popl %ecx
         popl %ebx
-        popl %eax
         # popl %ebp
         movl $-1, %eax  # return -1
         leave
@@ -667,14 +632,13 @@ LL_SEARCH:      # linked list search function
 # start at mp1_list_head
 # if it matches return addr in eax
 # if next reaches NULL (0) return -1 in eax
-# returns addr of list item before in ebx
+# returns addr of list item before in ecx
 # save regs
 pushl %ebp              # save old base ptr
 movl %esp, %ebp         # set stack frame, ebp = esp
 # protect callee saved regs here (do all)
 # pushl %ebx
-pushl %ecx
-pushl %edx
+pushl %ebx
 pushl %esi
 pushl %edi
 xor %eax, %eax
@@ -684,49 +648,47 @@ xor %edx, %edx
 /*
 stack
 --------------------------------
-edx             ebp -8
-ecx             ebp -4
---------------------------------
+edi
+esi             ebp -8
+ebx             ebp -4
 old ebp         ebp +- 0<- new ebp
-location        ebp + 4
-old stack       ebp + 6
+--------------------------------
+return ptr      ebp +4
+location        ebp + 8
+old stack       ebp + 12
 */
-movw 4(%ebp), %cx              # pop location (to search for) from stack into cx
-movl mp1_list_head, %ebx        # move head of list to ebx
-movl $0, %edx                   # previous list item starts at NULL
+movl 8(%ebp), %ebx              # pop location (to search for) from stack into bx
+movl mp1_list_head, %esi        # move head of list to ebx
+movl $0, %edi                   # previous list item starts at NULL
 movl $-1, %eax                  # defult return value is -1, will be changed to 0 if found
-jmp LOOP1       # jump to while loop
+call LOOP1       # jump to while loop
 
 # tear down
         popl %edi
         popl %esi
-        popl %edx
-        popl %ecx
         popl %ebx
         
         # popl %ebp
-        movl $-1, %ebx  # not found, %ebx = -1
+        movl $-1, %ecx  # not found, %ecx = -1
         leave
         ret
 
 LOOP1:  # loop for linked list search
-        cmpw %cx, LOCATION(%ebx)         # compare location and location from list
+        cmpw %bx, LOCATION(%esi)         # compare location and location from list
         je FOUND                # they are equal so jump to found
-        movl %ebx, %edx         # move what is now previous location to edx
-        movl NEXT(%ebx), %ebx     # go to NEXT struct in list
-        cmpl $0, %ebx           # compare ebx to 0
+        movl %esi, %edi         # move what is now previous location to edx
+        movl NEXT(%esi), %esi     # go to NEXT struct in list
+        cmpl $0, %esi           # compare addr of node to 0
         jne LOOP1               # if ebx != 0, continue loop
         ret                     # if ebx == 0, aka end of linked list return
 
 FOUND:
-        movl %ebx, %eax           # set eax since the struct was found
-        movl %edx, %ebx
+        movl %esi, %edx           # addr of node
+        movl %edi, %ecx                 # addr of node before
         # clean up
         popl %edi
         popl %esi
-        popl %edx
-        popl %ecx
-        # popl %ebx
+        popl %ebx
         # popl %ebp
         leave
         ret
