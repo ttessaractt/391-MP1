@@ -48,11 +48,11 @@ mp1_poke:
 mp1_rtc_tasklet:
 # walk down mp1_list_head and examine each struct
 # decrements countdown
-# if countdown is zero look at status
-# if status == 1
+# b if countdown is zero look at status
+# b if status == 1
         # on char is displayed, swap to off char & make status 0
         # countdown = off_length
-# if status == 0
+# b if status == 0
         # off char is displayed, swap to on char & make status 1
         # countdown = on_length
 # call mp1_poke with new char
@@ -211,7 +211,7 @@ xor %ecx, %ecx
 xor %edx, %edx
 
 
-# if arg is 0, error
+# b if arg is 0, error
 movl 8(%ebp), %edx      # get addr of arg (*from) from stack
 # movl 32(%esp), %edx      # get addr of arg (*from) from stack
 cmpl $0, %edx         # check if *from is 0
@@ -384,7 +384,7 @@ mp1_ioctl_find:
         # free memory
 # search list for matching struct (LL_SEARCH, returns -1 in eax if not found, or location in eax if found)
 # use mp1_copy_to_user to copy entire struct to the ptr at the beginning of the function
-# if error (similar error handling to add) return -1, else return 0
+# b if error (similar error handling to add) return -1, else return 0
 
 pushl %ebp              # save old base ptr
 movl %esp, %ebp         # set stack frame, ebp = esp
@@ -407,7 +407,7 @@ movw LOCATION(%esi), %bx
 # call GET_LOCATION       # get location (stored in eax)
 # popl %edx       # take addr off stack
 
-# error check location
+# b error check location
 cmpw $1999, %bx        # check if location is < 80*25-1
 jg ERROR           # if location > 80*25-1, error + free memory
 cmpw $0, %bx        # check if location is > 0
@@ -442,70 +442,6 @@ jne ERROR   # if eax != 0, error + free memory
         popl %ebx
         # popl %ebp
         movl $0, %eax
-        leave
-        ret
-
-GET_LOCATION: # helper function to get location from struct in user space
-# takes addr of struct from stack (pushed in caller)
-# returns location from struct (in %ax)
-/*
-%eax = 
-%ebx =
-%ecx = garbage
-%edx = addr of struct
-*/
-# extract location from given struct
-        # malloc struct
-        # copy_from_user
-        # get location
-        # free memory
-pushl %ebp              # save old base ptr
-movl %esp, %ebp         # set stack frame, ebp = esp
-# pushl %eax
-pushl %ebx
-pushl %esi
-pushl %edi
-xor %eax, %eax
-xor %ebx, %ebx
-xor %ecx, %ecx
-xor %edx, %edx
-
-movl 4(%ebp), %edx      # get addr of struct from stack
-
-cmpl $0, %edx         # check if *from is 0
-je ERROR                # if *from == 0, error
-
-# malloc struct
-pushl $16        # push size to stack
-call mp1_malloc # call malloc, void ptr for memory allocated stored in %eax
-popl %ecx
-cmpl $0, %eax         # check if eax is NULL, check if pointer (not what it points to) is NULL (aka 0)
-je ERROR                # memory wasnt able to be allocated, error
-
-# copy struct
-movl %eax, %ebx         # save eax (*to) in ebx, ebx = eax = (*to)
-pushl $16       # push n (size to copy)
-pushl %edx       # push *from, arg
-pushl %eax       # push *to, space allocated in malloc
-call mp1_copy_from_user # copy struct from arg to memory allocated
-popl %ecx
-popl %ecx
-popl %ecx
-
-cmpl $0, %eax   # compare for checking if eax != 0, check if all memory was able to be copied
-jne ERROR_FREE   # if eax != 0, error + free memory
-
-movw LOCATION(%edx), %ax        # get location
-
-pushl %ebx
-call mp1_free  # free memory
-popl %ebx
-# clean up
-        popl %edi
-        popl %esi
-        popl %ebx
-        # popl %eax
-        # popl %ebp
         leave
         ret
 
@@ -645,8 +581,8 @@ ERROR_FREE: # error but memory needs to be freed
 LL_SEARCH:      # linked list search function
 # pass in location on stack from caller
 # start at mp1_list_head
-# if it matches return addr in eax
-# if next reaches NULL (0) return -1 in eax
+# b if it matches return addr in eax
+# b if next reaches NULL (0) return -1 in eax
 # returns addr of list item before in ecx
 # save regs
 pushl %ebp              # save old base ptr
