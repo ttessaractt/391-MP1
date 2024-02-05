@@ -69,60 +69,72 @@ mp1_rtc_tasklet:
         xor %ebx, %ebx
         xor %ecx, %ecx
         xor %edx, %edx
-        movl mp1_list_head, %ebx        # move head of list to esi
-        cmpl $0, %ebx
+        xor %esi, %esi
+        movl mp1_list_head, %esi        # move head of list to esi
+        cmpl $0, %esi
         je TASKLET_LIST_DONE
         jmp TASKLET_LOOP                     # call loop that cycles through linked list
-        # popl %edi
-        # popl %esi
-        # popl %ebx
-        # leave
-        # ret
+        popl %edi
+        popl %esi
+        popl %ebx
+        leave
+        ret
 
 TASKLET_LOOP: # loop for tasklet
-        cmpw $0, %bx                   # check if ptr to struct is NULL
+        # movl %edi, %esi
+        cmpl $0, %esi                   # check if ptr to struct is NULL
         je TASKLET_LIST_DONE
-
-        cmpw $0, COUNTDOWN(%ebx)        # compare countdown to 0
+        
+        cmpw $0, COUNTDOWN(%esi)        # compare countdown to 0
         je TASKLET_COUNTDOWN_ZERO                         # if countdown is 0, jump
-        jl ERROR
-        decw COUNTDOWN(%ebx)            # decrement countdown
+        # jl ERROR
+        decl COUNTDOWN(%esi)            # decrement countdown
+        # subl $1, COUNTDOWN(%esi)
 
-        cmpw $0, COUNTDOWN(%ebx)        # compare countdown to 0
+        cmpw $0, COUNTDOWN(%esi)        # compare countdown to 0
         je TASKLET_COUNTDOWN_ZERO                         # if countdown is 0, jump
 
-        movl NEXT(%ebx), %ebx           # go to next struct in list
+        movl NEXT(%esi), %esi           # go to next struct in list
         jne TASKLET_LOOP                      # if there is still more list, continue loop
+        ret
 
 TASKLET_COUNTDOWN_ZERO: # if countdown is 0
-        cmpw $0, STATUS(%ebx)       # compare status to 0
+        cmpw $0, STATUS(%esi)       # compare status to 0
         je TASKLET_STATUS_OFF                  # if status is 0
         jne TASKLET_STATUS_ON                  # if status is 1
 
 TASKLET_STATUS_OFF: # is status == 0
-        movb ON_CHAR(%ebx), %cl       # set cl to ON_CHAR
-        movw LOCATION(%ebx), %ax       # move LOCATION to eax
+        movb ON_CHAR(%esi), %cl       # set cl to ON_CHAR
+        movw LOCATION(%esi), %ax       # move LOCATION to eax
         imulw $2, %ax, %ax              # location *2
+        pushl %esi
         pushl %edx
         call mp1_poke           # change character
         popl %edx
-        movw $1, STATUS(%ebx)       # set STATUS to 1
-        movl ON_LENGTH(%ebx), %esi       # store ON_LENGTH in bx
-        movl %esi, COUNTDOWN(%ebx)      # set COUNTDOWN to ON_LENGTH
-        movl NEXT(%ebx), %ebx     # go to NEXT struct in list
+        popl %esi
+        movw $1, STATUS(%esi)       # set STATUS to 1
+        movw ON_LENGTH(%esi), %bx       # store ON_LENGTH in bx
+        movw %bx, COUNTDOWN(%esi)      # set COUNTDOWN to ON_LENGTH
+        movl NEXT(%esi), %esi     # go to NEXT struct in list
+        cmpl $0, %esi                   # check if ptr to struct is NULL
+        je TASKLET_LIST_DONE
         jmp TASKLET_LOOP              # if there is still more list, continue loop
 
 TASKLET_STATUS_ON: # if status == 1
-        movb OFF_CHAR(%ebx), %cl       # set cl to OFF_CHAR
-        movw LOCATION(%ebx), %ax       # move LOCATION  to eax
+        movb OFF_CHAR(%esi), %cl       # set cl to OFF_CHAR
+        movw LOCATION(%esi), %ax       # move LOCATION  to eax
         imulw $2, %ax, %ax              # location *2
+        pushl %esi
         pushl %edx
         call mp1_poke           # change character
         popl %edx
-        movw $0, STATUS(%ebx)       # set STATUS to 0
-        movl OFF_LENGTH(%ebx), %esi       # store OFF_LENGTH in bx
-        movl %esi, COUNTDOWN(%ebx)      # set COUNTDOWN to OFF_LENGTH
-        movl NEXT(%ebx), %ebx     # go to NEXT struct in list
+        popl %esi
+        movw $0, STATUS(%esi)       # set STATUS to 0
+        movw OFF_LENGTH(%esi), %bx       # store OFF_LENGTH in bx
+        movw %bx, COUNTDOWN(%esi)      # set COUNTDOWN to OFF_LENGTH
+        movl NEXT(%esi), %esi     # go to NEXT struct in list
+        cmpl $0, %esi                   # check if ptr to struct is NULL
+        je TASKLET_LIST_DONE
         jmp TASKLET_LOOP              # if there is still more list, continue loop
 
 TASKLET_LIST_DONE:
@@ -306,7 +318,7 @@ xor %ebx, %ebx
 xor %ecx, %ecx
 xor %edx, %edx
 
-movw 4(%ebp), %bx       # get location from stack
+movw 8(%ebp), %bx       # get location from stack
 # validate location
 cmpw $1999, %bx        # check if location is < 80*25-1
 jg ERROR           # if location > 80*25-1, error + free memory
@@ -318,8 +330,8 @@ pushl %ebx              # push location to stack for search
 call LL_SEARCH          # call linked list search
 popl %edi               # pop location off stack
 
-movl %ecx, %esi         # move node before to esi
-movl %edx, %edi              # move node to be removed to edi
+movl %ecx, %esi         # move node before to esi, starts at 0
+movl %edx, %edi              # move node to be removed to edi, starts at mp1_list_head
 # check if location was found
 cmpl $-1, %edi  # check if location was not found
 je ERROR        # location not found, error
@@ -328,6 +340,8 @@ je ERROR        # location not found, error
 # remove from list
 cmpl mp1_list_head, %edi        # check if node found is head of list
 je REMOVE_HEAD                  # if it is head jump to that removal
+cmpl $0, %edi
+je REMOVE_HEAD
 
 movl NEXT(%edi), %ebx           # get next ptr from node to be removed
 movl %ebx, NEXT(%esi)           # connect the nodes without node to be removed 
@@ -402,7 +416,7 @@ jl ERROR           # if location < 0, error + free memory
 # search linked list
 pushl %ebx              # push location to stack for search
 call LL_SEARCH          # call linked list search
-popl %edi               # pop location off stack
+popl %ebx               # pop location off stack
 
 # check if location was found
 cmpl $-1, %edx  # check if location was not found
@@ -410,13 +424,14 @@ je ERROR        # location not found, error
 movl %edx, %edi # move addr of struct to ebx
 
 # copy to user
+movl 8(%ebp), %esi
 pushl $16       # push n (size to copy)
-pushl %ebx       # push *from, addr of struct with matching location
-pushl %edi       # push *to, addr that was passed in
+pushl %edi       # push *from, addr of struct with matching location
+pushl %esi       # push *to, addr that was passed in
 call mp1_copy_to_user
-popl %esi
-popl %esi
-popl %esi
+popl %edi
+popl %edi
+popl %edi
 
 cmpl $0, %eax   # compare for checking if eax != 0, check if all memory was able to be copied
 jne ERROR   # if eax != 0, error + free memory
@@ -544,7 +559,7 @@ jl ERROR          # if location 2 < 0, error + free memory
 pushl %edi
 pushl %ebx              # push location to stack for search
 call LL_SEARCH          # call linked list search
-popl %esi               # pop location off stack
+popl %edi               # pop location off stack
 popl %edi
 movl %edx, %esi         # store addr of struct 2 in ecx
 cmpl $-1, %esi
@@ -660,8 +675,9 @@ old stack       ebp + 12
 movl 8(%ebp), %ebx              # pop location (to search for) from stack into bx
 movl mp1_list_head, %esi        # move head of list to ebx
 movl $0, %edi                   # previous list item starts at NULL
-movl $-1, %eax                  # defult return value is -1, will be changed to 0 if found
-call LOOP1       # jump to while loop
+movl $-1, %edx                  # defult return value is -1, will be changed to 0 if found
+cmpl $0, %esi
+jne LOOP1       # jump to while loop
 
 # tear down
         popl %edi
@@ -680,7 +696,7 @@ LOOP1:  # loop for linked list search
         movl NEXT(%esi), %esi     # go to NEXT struct in list
         cmpl $0, %esi           # compare addr of node to 0
         jne LOOP1               # if ebx != 0, continue loop
-        ret                     # if ebx == 0, aka end of linked list return
+        je NOT_FOUND                    # if ebx == 0, aka end of linked list return
 
 FOUND:
         movl %esi, %edx           # addr of node
@@ -690,6 +706,16 @@ FOUND:
         popl %esi
         popl %ebx
         # popl %ebp
+        leave
+        ret
+        
+NOT_FOUND:
+popl %edi
+        popl %esi
+        popl %ebx
+        
+        # popl %ebp
+        movl $-1, %ecx  # not found, %ecx = -1
         leave
         ret
 
