@@ -11,6 +11,18 @@ It creates an animated display using direct video memory manipulation and hardwa
 QEMU is required to run this project.
 'C:\qemu-1.5.0-win32-sdl\qemu-system-i386w.exe -hda "Z:\mp1_tsamu3\student-distrib\mp3.img" -m 256 -gdb tcp:127.0.0.1:1234 -name mp3'
 
+## Components
+| File | Description |
+|------|-------------|
+| `mp1.S` | Main assembly implementation with animation logic and interrupt handlers |
+| `frame0.txt` / `frame1.txt` | Animation frame data |
+| `mp1_testcases.c` | Kernel-level test harness |
+| `mp1_userspace.c/h` | User-space testing utilities |
+| `ktest` / `utest` | Compiled test binaries |
+| `Makefile` | Build configuration |
+| `mp1.h` | Header file with function declarations and constants |
+| `mp1.diff` | Patch file for kernel integration |
+
 ## ACADEMIC INTEGRITY
 Please review the University of Illinois Student Code before starting,
 particularly all subsections of Article 1, Part 4 Academic Integrity and Procedure [here](http://studentcode.illinois.edu/article1_part4_1-401.html).
