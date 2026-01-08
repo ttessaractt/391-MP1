@@ -9,7 +9,7 @@ This project displays a fish animation using VGA text mode, controlled by Real T
 It creates an animated display using direct video memory manipulation and hardware interrupt handling.
 
 QEMU is required to run this project.
-'C:\qemu-1.5.0-win32-sdl\qemu-system-i386w.exe -hda "Z:\mp1_tsamu3\student-distrib\mp3.img" -m 256 -gdb tcp:127.0.0.1:1234 -name mp3'
+'C:\qemu-1.5.0-win32-sdl\qemu-system-i386w.exe -hda "Z:\mp1_tsamu3\student-distrib\mp1.img" -m 256 -gdb tcp:127.0.0.1:1234 -name mp3'
 
 ## Components
 | File | Description |
